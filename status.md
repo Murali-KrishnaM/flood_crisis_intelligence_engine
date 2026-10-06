@@ -1,261 +1,111 @@
-# Crisis Intelligence Engine — Project Status
-
-## Project
-
-Crisis Intelligence Engine:
-An Offline Predictive RAG Decision-Support System
-for Ward 177, Velachery, Chennai
-
-## Purpose
-
-Build a genuinely functional near-realistic prototype that connects:
-
-Real/traceable Chennai data
-→ dynamic flood-risk inference
-→ persistence trigger
-→ jurisdiction context
-→ official-document retrieval
-→ local LLM generation
-→ evidence verification
-→ operator dashboard
-
-The submitted paper and presentations describe the intended system.
-They are NOT evidence that those components have already been implemented.
-
----
-
-# Status Legend
-
-- 🟢 Implemented and tested
-- 🟡 Implemented but incomplete/unverified
-- 🔴 Not implemented
-- ⚠️ Blocked
-- 🔵 Planned
-
----
-
-# Current Repository State
-
-The implementation repository is currently empty apart from:
-
-- Datasets/raw/
-- knowledge_base/
-- status.md
-
-No production code has been implemented yet.
-
----
-
-# Architecture Status
-
-| Component | Status | Notes |
-|---|---|---|
-| Data ingestion | 🔴 | |
-| Data validation | 🔴 | |
-| Data normalization | 🔴 | |
-| Dynamic risk model | 🔴 | |
-| XGBoost | 🔴 | |
-| LSTM | 🔴 | |
-| Spatial susceptibility | 🔴 | |
-| Risk fusion | 🔴 | |
-| Persistence trigger | 🔴 | |
-| Jurisdiction resolver | 🔴 | |
-| Policy corpus | 🟡 | Initial official PDFs downloaded |
-| Embedding pipeline | 🔴 | |
-| ChromaDB | 🔴 | |
-| RAG retrieval | 🔴 | |
-| Local LLM | 🔴 | |
-| Claim verification | 🔴 | |
-| FastAPI | 🔴 | |
-| React dashboard | 🔴 | |
-| Historical replay | 🔴 | |
-| Three-node LAN deployment | 🔵 | |
-| Automated tests | 🔴 | |
-| Audit logging | 🔴 | |
-
----
-
-# Data Collection
-
-## RTFF
-
-A separate scraper has already been developed and tested on one
-RTFF ARG station (Anna University) outside the current repository.
-
-The scraper has demonstrated:
-
-- authenticated/session-aware historical access
-- fixed 8-day historical request behaviour
-- JSON data retrieval
-- handling of empty tiles
-
-Known RTFF data-quality concerns:
-
-- missing dates exist
-- individual hourly values may be null
-- PDF export is unreliable
-- hour-label semantics require verification
-- rainfall unit semantics must be verified before final normalization
-- some stations may have different historical coverage
-
-The scraper must therefore preserve raw source values and must not
-silently interpolate or fabricate missing observations.
-
----
-
-# RTFF Target Stations
-
-## Rainfall
-
-- ARG0055 — IIT Madras, Guindy
-- ARG0069 — Jerusalem Engineering College, Pallikaranai
-- ARG0052 — Government High School, MGR Nagar
-- ARG0075 — Tamil Nadu Bio-Diversity Board, Medavakkam
-
-## Water Level
-
-- AWLR0053 — Velachery Tank
-- AWLR0052 — Narayanapuram Tank
-- AWLR0050 — Velachery-Tambaram Main Road / Veerangal Odai
-
-## Weather
-
-- AWS0005 — KCG College of Technology, Karapakkam
-
-These stations were selected because they provide geographically
-relevant observations around the Velachery study area.
-
----
-
-# Downloaded Datasets
-
-## Rainfall
-
-- Chennai Daily Rainfall 1991–2023 CSV
-  Status: 🟡 Downloaded; schema inspection pending
-
-## Flood Data
-
-- Chennai Floods 2015 KML collection
-  Status: 🟡 Downloaded; GIS inspection pending
-
-- Chennai Flooding Data KML collection
-  Status: 🟡 Downloaded; GIS inspection pending
-
-## GIS
-
-- GCC Stormwater Drain KML collection
-  Status: 🟡 Downloaded; GIS inspection pending
-
----
-
-# Policy Knowledge Base
-
-## National
-
-- NDMA Urban Flooding Guidelines 2010
-  Status: 🟢 Downloaded
-
-- NDMA Flood Management Guidelines 2008
-  Status: 🟢 Downloaded
-
-- National Disaster Management Plan 2019
-  Status: 🔴 Pending usable official copy
-
-- Current Disaster Management Act
-  Status: 🔴 Pending usable official copy
-
-## Tamil Nadu
-
-- Tamil Nadu State Disaster Management Perspective Plan 2018–2030
-  Status: 🟢 Downloaded
-
-## Chennai
-
-- GCC City Disaster Management Perspective Plan 2025
-  Status: 🟢 Downloaded
-
-- CCUDMA 2025 notification / G.O.Ms. No.236
-  Status: 🟢 Downloaded
-
----
-
-# Immediate Objective
-
-Obtain sufficient reliable, geographically relevant RTFF data around
-Velachery to determine whether RTFF can serve as a primary local
-observation source.
-
-Do NOT scrape the entire Chennai station network unless later
-evidence shows it is necessary.
-
----
-
-# Immediate Task
-
-1. Test targeted RTFF ARG stations.
-2. Validate coverage and data quality.
-3. Store each station separately.
-4. Produce station-level manifests and acquisition logs.
-5. Test selected AWLR stations if ARG collection is successful.
-6. Test AWS0005 after ARG/AWLR.
-7. Do not merge datasets yet.
-
----
-
-# Data Rules
-
-- Original source data must remain unchanged.
-- Do not silently fill missing values.
-- Do not invent timestamps.
-- Do not invent station metadata.
-- Do not claim a unit/semantic interpretation without evidence.
-- Do not merge datasets before their schemas and temporal semantics
-  are understood.
-- Maintain provenance for every downloaded source.
-
----
-
-# Tomorrow Review MVP
-
-Target a functioning vertical slice:
-
-Data
-→ Risk
-→ Trigger
-→ Policy Retrieval
-→ Local LLM
-→ Verification
-→ Dashboard
-
-The first implementation may use a simpler validated predictive
-baseline before LSTM is introduced.
-
----
-
-# Known Limitations
-
-- No trained model currently exists.
-- No validated flood-risk label currently exists.
-- No RAG implementation currently exists.
-- No local LLM integration currently exists.
-- No dashboard currently exists.
-- No three-node deployment currently exists.
-- No quantitative project performance claims are currently valid.
-
----
-
-# Current Truth
-
-The project is at the beginning of implementation.
-
-Any component marked 🔴 must not be described as already implemented
-in reports, presentations, demonstrations, or documentation.
-
----
-
-## RTFF station mapping diagnostic
-
-- Mapping diagnostic executed against the live RTFF page.
-- No historical bulk download was performed.
-- See collector.log for the live selector inventory and target matches.
+# Crisis Intelligence Engine — status.md
+(Persistent project memory. Replace/merge with any earlier history you wish to keep.)
+
+Project: Offline predictive RAG decision-support system, Ward 177 Velachery, Chennai.
+Rule: nothing is "complete" unless implemented AND tested. Paper/presentation are NOT evidence.
+
+## Current phase
+Phase 1 — Data audit + source-preserving canonicalization.
+Status: CODE DELIVERED, NOT YET EXECUTED ON REAL PROJECT DATA
+
+Status: CODE DELIVERED, NOT YET EXECUTED BY ANYONE. All checkboxes below stay
+unticked until the user runs the commands and records the results in
+"Test results" / "Verified findings".
+
+## Pipeline chain (target)
+REAL DATA → RISK INFERENCE → PERSISTENCE TRIGGER → JURISDICTION → POLICY RETRIEVAL
+→ LOCAL LLM → EVIDENCE VERIFICATION → DASHBOARD
+
+| Stage | Status |
+|---|---|
+| Raw acquisition (RTFF ARG, reservoir; rainfall CSV; KML; stormwater PDF; policy PDFs) | Acquired (per user report; ARG 568/568 tiles, reservoir 710/710 tiles) |
+| Data audit + canonicalization | Code written; NOT run; NOT tested |
+| Everything else (ML, spatial, RAG, Ollama, API, dashboard, PostGIS) | Not started |
+
+## Files created in Phase 1 (delivered in chat; user copies manually)
+- scripts/pipeline_common.py        (JSON double-decode, gap stats, duplicate classification, helpers)
+- scripts/rtff_arg_processor.py     (ARG long format + quality audit)
+- scripts/rtff_reservoir_processor.py (reservoir records + quality audit)
+- scripts/build_canonical_dataset.py (canonical_rainfall / canonical_reservoir)
+- scripts/data_audit.py             (CLI: discovery, stations, provenance, orchestration)
+- tests/test_pipeline.py
+- tests/fixtures/arg_ok/STN1/tile_2022-04-01_2022-04-08.json
+- tests/fixtures/arg_ok/STN1/tile_2022-04-04_2022-04-11.json
+- tests/fixtures/arg_bad/STN2/tile_bad.json
+- tests/fixtures/arg_bad/STN2/tile_corrupt.json
+- tests/fixtures/reservoir/RES1/tile_2022-04-08_2022-04-15.json (double-encoded)
+- requirements.txt: add pandas>=2.0, pytest>=7.0
+Existing scripts/rtff_scraper.py and rtff_velachery_collector.py: UNCHANGED.
+
+## Outputs the pipeline WILL create when run (none verified yet)
+Datasets/processed/: rtff_arg_hourly_source.csv, rtff_arg_day_records.csv,
+  rtff_reservoir_daily.csv, canonical_rainfall.csv, canonical_reservoir.csv
+Datasets/metadata/: arg_data_quality.csv, arg_issues.csv,
+  reservoir_data_quality.csv, reservoir_issues.csv, stations.csv,
+  data_sources.csv, rainfall_csv_schema.csv, canonical_build_report.csv
+
+## Commands
+python -m unittest discover -s tests -v     (or: pytest -v)
+python scripts/data_audit.py [--summary|--arg|--reservoir|--canonical|--stations|--provenance]
+
+## Test results
+- [ ] Unit tests run: NOT YET RUN  (result: ________ )
+- Tests cover: ARG parsing; double-encoded reservoir JSON; null preservation;
+  24 hour fields + order; duplicate/conflict detection; missing-date/gap
+  detection; malformed + unreadable handling; no unit fabrication; provenance.
+- [ ] Full pipeline run on real data: NOT YET RUN  (result: ________ )
+
+## Raw data coverage (USER-REPORTED; to be confirmed by arg_data_quality.csv)
+- ARG: 4 stations x 142 tiles = 568 OK, 0 failed. Common window 2022-04-01..2025-05-10.
+  Reported missing in window: Taramani 140 (max gap 89), W178 76 (max gap 63),
+  NIOT Pallikaranai 96 (max gap 29). Anna University broader archive
+  2018-01-02..2025-05-10, 2148 observed days, 538 missing, max gap 178.
+- Reservoir: 5 tanks x 142 tiles = 710 OK, 0 failed (RD001 Red Hills, Cho001
+  Cholavaram, Po001 Poondi, TK-001 Thervoy Kandigal, TNCH-07-T0726 Chembarambakkam).
+- Other raw: Chennai Daily Rainfall 1991–2023 CSV (schema not yet inspected),
+  2 KML collections (not processed), GCC stormwater PDF (not processed).
+- Policy PDFs present: NDMA Flood 2008, NDMA Urban Flooding 2010, TN SDMP 2018-2030,
+  CCUDMA GO Gazette 221, "Perspective Plan 2018-2030.pdf" (IDENTITY UNVERIFIED).
+- NOT present: National Disaster Management Plan 2019; Disaster Management Act PDF.
+  Do not create placeholders or depend on them.
+
+## Known data-quality issues
+- Substantial missing ARG days (see above); missingness is reported, never filled.
+- Reservoir JSON is double-encoded; rtff_scraper.py `summary` fails on it
+  (TypeError: string indices must be integers). Downloads are fine. Bypassed by
+  pipeline_common.decode_json_text. Scraper not modified.
+- aws/ has no primary AWS dataset.
+- Overlapping tiles may repeat dates: pipeline reports repeated/conflicting dates.
+
+## Unresolved questions (DO NOT assume)
+1. ARG hour-label semantics: order h09_30..h08_30; whether label = interval
+   start/end/instant; whether h00_30..h08_30 belong to date_val or date_val+1.
+   => No final timestamp built. timestamp_status = source_date_and_hour_label_preserved.
+2. ARG units (rainfall_value, dailyrainfall) unverified; no "mm" label used.
+3. Relation of dailyrainfall to hourly sum unverified
+   (info column daily_minus_hourly_sum only).
+4. Reservoir units for storage / inflow_total / outflow_total unverified;
+   source names preserved.
+5. Station metadata: _meta/ and station_manifest.csv schemas were NOT seen when
+   the code was written. ALIASES in data_audit.py are guesses; verify against the
+   "[STATIONS] metadata keys seen" output and raw_meta_fields_json.
+6. Tile filename pattern unknown; tile start/end falls back to record date range
+   (source_tile_range_origin column says which was used).
+7. Rainfall CSV schema unknown (inspected at runtime into rainfall_csv_schema.csv).
+8. acquisition_date left null everywhere (acquisition_log.csv not parsed).
+
+## Canonicalization policy (implemented in code, untested on real data)
+- No interpolation, zero-fill, forward-fill, averaging, unit conversion.
+- Exact duplicate records: first kept, later copies dropped from canonical only
+  (still in source-preserving CSV). Conflicting versions: ALL kept, flagged
+  record_status = conflicting_source_versions.
+
+## Next recommended task
+1. Create files, install requirements, run tests, run `python scripts/data_audit.py`.
+2. Paste back: test output, discovery table, arg_data_quality.csv,
+   reservoir_data_quality.csv, [STATIONS] output, head of rainfall_csv_schema.csv,
+   2-3 raw tile filenames, and the _meta/ file listing + station_manifest.csv head.
+3. Then update this file with REAL results; fix any failures.
+4. Next task after that: Chennai Daily Rainfall CSV audit, then ARG hour-semantics
+   investigation (compare to rainfall CSV / RTFF documentation), then KML audit.
+   Knowledge-base identity audit is separate.
