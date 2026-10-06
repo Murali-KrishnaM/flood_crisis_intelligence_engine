@@ -4,14 +4,21 @@ Rules
   * raw Date string is preserved exactly (kept as `date_raw`)
   * dates parsed with explicit day-first semantics (DD-MM-YYYY)
   * duplicates are classified and flagged, NEVER removed; no row is dropped
+  * conflicting Station+Date versions are ALL retained; no value is chosen
   * rainfall unit is UNVERIFIED: no unit is implied in any column or note
   * no interpolation, no gap filling, no geographic claims
 Outputs
   Datasets/processed/rainfall_csv_source_rows.csv   (one row per source row)
   Datasets/metadata/rainfall_csv_quality.csv        (section,metric,value,note)
+  Datasets/metadata/rainfall_csv_duplicate_report.csv
+  Datasets/metadata/rainfall_csv_conflicts.csv      (one row per conflicting key)
   Datasets/metadata/rainfall_csv_station_coverage.csv
   Datasets/metadata/rainfall_csv_yearly.csv
   Datasets/metadata/rainfall_csv_station_year.csv
+
+Type note: in-memory tables hold datetime.date objects for first_date/last_date
+etc.; CSV files contain their ISO strings (YYYY-MM-DD). parsed_date in the
+source-rows table is an ISO string.
 """
 from __future__ import annotations
 
@@ -28,17 +35,33 @@ from pipeline_common import (COMMON_WINDOW, classify_duplicates, gap_stats,
 
 RAW_COLUMNS = ["District", "Station", "Rainfall", "Date"]
 DDMMYYYY = re.compile(r"^\d{2}-\d{2}-\d{4}$")
+NUMERIC_TOLERANCE = 0.05   # figures reported to 1 decimal place
 
-# Values the USER reported from an independent pandas audit. They are ONLY used
-# to emit pass/fail "reproduction_check" rows; results are always recomputed.
+# Independent-style reference values (user's pandas audit of the raw CSV).
 USER_REPORTED = {
     "total_rows": 21416,
     "parsed_rows": 21416,
     "date_parse_failures": 0,
     "unique_stations_raw": 62,
     "true_duplicate_station_date_rows": 1447,
-    "first_date": "1993-01-08",
-    "last_date": "2023-12-12",
+}
+
+# REGRESSION PINS: values observed when the pipeline was run on the real file
+# (reported by the user). They are produced BY this pipeline, so matching them
+# only shows the result is stable; it is NOT independent verification.
+# The earlier ad-hoc dates 1993-01-08 / 2023-12-12 were retracted and removed.
+PIPELINE_OBSERVED_PINS = {
+    "first_date": "1993-03-03",
+    "last_date": "2023-12-26",
+    "duplicate_full_rows": 1361,
+    "duplicate_station_date_keys": 1397,
+    "exact_duplicate_keys": 1311,
+    "exact_duplicate_extra_rows": 1358,
+    "conflicting_keys": 86,
+    "rows_in_conflicting_keys": 175,
+    "conflicting_extra_rows": 89,
+    "conflict_max_abs_rainfall_difference": 202.1,
+    "conflict_median_abs_rainfall_difference": 5.5,
 }
 
 # Free-text search tokens (lower-case substrings of the STATION NAME). They are
@@ -49,6 +72,14 @@ STUDY_AREA_NAME_HINTS = (
     "meenambakkam", "alandur", "alandhur",
 )
 HINT_BASIS = "station_name_text_match_only; no coordinates; geography unverified"
+
+CONFLICT_COLUMNS = [
+    "station", "parsed_date", "version_count", "distinct_versions",
+    "rainfall_raw_versions", "source_data_rows", "rainfall_min",
+    "rainfall_max", "abs_rainfall_difference", "resolution",
+]
+DUP_REPORT_COLUMNS = ["category", "key_count", "rows_in_keys", "extra_rows",
+                      "definition"]
 
 
 def sha256_file(path: Path) -> str:
@@ -81,8 +112,21 @@ def _norm_name(name):
     return re.sub(r"\s+", " ", str(name).strip().casefold())
 
 
+def _matches(computed, ref):
+    """Numeric reference -> tolerance compare; otherwise exact string compare."""
+    if computed is None:
+        return False
+    if isinstance(ref, (int, float)) and not isinstance(ref, bool):
+        try:
+            return abs(float(computed) - float(ref)) <= NUMERIC_TOLERANCE
+        except (TypeError, ValueError):
+            return False
+    return str(computed) == str(ref)
+
+
 def audit_rainfall(df_raw, source_rel, provenance=None, hints=STUDY_AREA_NAME_HINTS,
-                   window=COMMON_WINDOW, reference=USER_REPORTED):
+                   window=COMMON_WINDOW, reference=USER_REPORTED,
+                   pins=PIPELINE_OBSERVED_PINS):
     missing = [c for c in RAW_COLUMNS if c not in df_raw.columns]
     if missing:
         raise ValueError(f"rainfall CSV missing expected columns {missing}; "
@@ -116,6 +160,8 @@ def audit_rainfall(df_raw, source_rel, provenance=None, hints=STUDY_AREA_NAME_HI
     rows = classify_duplicates(rows, ["station", "parsed_date"], "record_signature")
     rows["exact_duplicate_later_copy"] = ~rows["keep"]   # flag only; nothing dropped
     rows = rows.drop(columns=["keep"])
+    # byte-level full-row duplicate flag (all 4 raw columns identical to an earlier row)
+    rows["full_row_duplicate_later_copy"] = df.duplicated(RAW_COLUMNS).to_numpy()
 
     valid = rows[rows["parsed_date"].notna()].copy()
     total, n_parsed = len(rows), len(valid)
@@ -132,7 +178,63 @@ def audit_rainfall(df_raw, source_rel, provenance=None, hints=STUDY_AREA_NAME_HI
     dup = keys[keys["n"] > 1]
     exact, conf = dup[dup["u"] == 1], dup[dup["u"] > 1]
     spread = (conf["rmax"] - conf["rmin"]).dropna()
-    full_row_dups = int(df_raw.duplicated(RAW_COLUMNS).sum())
+
+    fd = rows["full_row_duplicate_later_copy"]
+    full_row_dups = int(fd.sum())
+    sizes = df.groupby(RAW_COLUMNS).size()
+    full_groups = sizes[sizes > 1]
+    status = rows["record_status"]
+    fd_conf = int((fd & (status == "conflicting_source_versions")).sum())
+    fd_exact = int((fd & (status == "exact_duplicate_first_kept")).sum())
+    fd_other = full_row_dups - fd_conf - fd_exact
+    exact_extra = int((exact["n"] - 1).sum())
+    conf_extra = int((conf["n"] - 1).sum())
+
+    # ---- conflict detail: every version of every conflicting key ------------
+    if len(conf):
+        cv = valid.merge(conf[["station", "parsed_date"]], on=["station", "parsed_date"])
+        cv = cv.sort_values(["station", "parsed_date", "source_data_row"])
+        conflicts = (cv.groupby(["station", "parsed_date"], sort=True)
+                     .agg(version_count=("source_data_row", "size"),
+                          distinct_versions=("record_signature", "nunique"),
+                          rainfall_raw_versions=("rainfall_raw", lambda s: "|".join(s)),
+                          source_data_rows=("source_data_row",
+                                            lambda s: "|".join(map(str, s))),
+                          rainfall_min=("rainfall_value", "min"),
+                          rainfall_max=("rainfall_value", "max"))
+                     .reset_index())
+        conflicts["abs_rainfall_difference"] = (conflicts["rainfall_max"]
+                                                - conflicts["rainfall_min"])
+        conflicts["resolution"] = "UNRESOLVED_all_versions_retained"
+        conflicts = conflicts.sort_values("abs_rainfall_difference", ascending=False,
+                                          na_position="last", kind="stable")
+        conflicts = conflicts[CONFLICT_COLUMNS].reset_index(drop=True)
+    else:
+        conflicts = pd.DataFrame(columns=CONFLICT_COLUMNS)
+
+    # ---- explicit duplicate report -----------------------------------------
+    dup_report = pd.DataFrame([
+        ("exact_duplicate_station_date", len(exact), int(exact["n"].sum()), exact_extra,
+         "Station+parsed Date key repeated; every version has identical District+Rainfall"),
+        ("conflicting_station_date", len(conf), int(conf["n"].sum()), conf_extra,
+         "Station+parsed Date key repeated; versions DIFFER; all retained, none chosen"),
+        ("all_duplicated_station_date", len(dup), int(dup["n"].sum()), true_dup,
+         "exact + conflicting; extra_rows = pandas duplicated(keep='first') on parsed rows"),
+        ("exact_duplicate_full_rows", int(len(full_groups)), int(full_groups.sum()),
+         full_row_dups,
+         "all 4 raw columns byte-identical to an earlier row (all rows, incl. unparsed dates)"),
+        ("rows_involved_in_conflicting_keys", len(conf), int(conf["n"].sum()), conf_extra,
+         "every row belonging to a conflicting key; see rainfall_csv_conflicts.csv"),
+        ("full_row_duplicates_inside_exact_keys", None, None, fd_exact,
+         "later full-row copies whose Station+Date key is an exact duplicate key"),
+        ("full_row_duplicates_inside_conflicting_keys", None, None, fd_conf,
+         "later full-row copies inside a conflicting key (e.g. 7.0, 7.0, 8.0)"),
+        ("full_row_duplicates_other_status", None, None, fd_other,
+         "later full-row copies in neither group (e.g. unparseable date)"),
+        ("exact_duplicate_extra_rows_not_byte_identical", None, None,
+         exact_extra - fd_exact,
+         "exact-duplicate extra rows that differ in raw text only (e.g. '2.0' vs '2.00')"),
+    ], columns=DUP_REPORT_COLUMNS)
 
     # ---- station coverage ---------------------------------------------------
     ov = None
@@ -245,27 +347,67 @@ def audit_rainfall(df_raw, source_rel, provenance=None, hints=STUDY_AREA_NAME_HI
         "extra rows beyond the first per key (pandas duplicated, keep='first')")
     add("duplicates", "exact_duplicate_keys", len(exact),
         "all versions have identical District+Rainfall")
-    add("duplicates", "exact_duplicate_extra_rows", int((exact["n"] - 1).sum()))
+    add("duplicates", "exact_duplicate_extra_rows", exact_extra)
     add("duplicates", "conflicting_keys", len(conf),
         "versions differ in rainfall (or district); ALL versions retained")
     add("duplicates", "rows_in_conflicting_keys", int(conf["n"].sum()))
-    add("duplicates", "conflicting_extra_rows", int((conf["n"] - 1).sum()))
+    add("duplicates", "conflicting_extra_rows", conf_extra)
+    add("duplicates", "full_row_duplicates_inside_exact_keys", fd_exact)
+    add("duplicates", "full_row_duplicates_inside_conflicting_keys", fd_conf,
+        "explains any gap between duplicate_full_rows and exact_duplicate_extra_rows")
+    add("duplicates", "full_row_duplicates_other_status", fd_other)
     add("duplicates", "conflict_max_abs_rainfall_difference",
         spread.max() if len(spread) else None, "UNIT UNVERIFIED")
     add("duplicates", "conflict_median_abs_rainfall_difference",
         spread.median() if len(spread) else None, "UNIT UNVERIFIED")
     add("duplicates", "rows_dropped_from_processed_file", 0, "nothing is dropped")
 
-    computed = dict(total_rows=total, parsed_rows=n_parsed, date_parse_failures=n_fail,
-                    unique_stations_raw=rows["station"].nunique(),
-                    true_duplicate_station_date_rows=true_dup,
-                    first_date=overall["first"], last_date=overall["last"])
+    # computed internal-consistency checks (not hardcoded references)
+    def chk(name, ok, note):
+        add("consistency_check", name, bool(ok), note)
+
+    chk("exact_plus_conflicting_extra_rows_equals_true_duplicate_rows",
+        exact_extra + conf_extra == true_dup, "computed identity")
+    chk("exact_plus_conflicting_keys_equals_duplicate_keys",
+        len(exact) + len(conf) == len(dup), "computed identity")
+    chk("exact_plus_conflicting_rows_equals_rows_in_duplicated_keys",
+        int(exact["n"].sum()) + int(conf["n"].sum()) == int(dup["n"].sum()),
+        "computed identity")
+    chk("parsed_plus_unparseable_equals_total", n_parsed + n_fail == total,
+        "computed identity")
+    chk("no_rows_dropped", len(rows) == len(df_raw), "processed rows == raw rows")
+    if len(stations) and overall["first"] is not None:
+        ok = (overall["first"] == stations["first_date"].dropna().min()
+              and overall["last"] == stations["last_date"].dropna().max())
+    else:
+        ok = overall["first"] is None and len(stations) == 0
+    chk("overall_first_last_equal_min_max_of_station_dates", ok,
+        "cross-check of overall dates against station coverage table")
+
+    computed = dict(
+        total_rows=total, parsed_rows=n_parsed, date_parse_failures=n_fail,
+        unique_stations_raw=rows["station"].nunique(),
+        true_duplicate_station_date_rows=true_dup,
+        first_date=overall["first"], last_date=overall["last"],
+        duplicate_full_rows=full_row_dups, duplicate_station_date_keys=len(dup),
+        exact_duplicate_keys=len(exact), exact_duplicate_extra_rows=exact_extra,
+        conflicting_keys=len(conf), rows_in_conflicting_keys=int(conf["n"].sum()),
+        conflicting_extra_rows=conf_extra,
+        conflict_max_abs_rainfall_difference=spread.max() if len(spread) else None,
+        conflict_median_abs_rainfall_difference=spread.median() if len(spread) else None)
     for k, ref in (reference or {}).items():
         add("reproduction_check", f"{k}_reproduces_user_reported",
-            str(computed.get(k)) == str(ref), f"computed={computed.get(k)} reference={ref}")
+            _matches(computed.get(k), ref),
+            f"computed={computed.get(k)} reference={ref}")
+    for k, ref in (pins or {}).items():
+        add("regression_pin", f"{k}_matches_pipeline_observed_pin",
+            _matches(computed.get(k), ref),
+            f"computed={computed.get(k)} pin={ref}; pin came from a real pipeline "
+            "run, so this is NOT independent verification")
 
     return dict(rows=rows, quality=pd.DataFrame(q), stations=stations,
-                yearly=yearly, station_year=station_year)
+                yearly=yearly, station_year=station_year,
+                duplicate_report=dup_report, conflicts=conflicts)
 
 
 def run_rainfall(root=None, csv_path=None, verbose=True):
@@ -289,18 +431,29 @@ def run_rainfall(root=None, csv_path=None, verbose=True):
     proc, meta = root / "Datasets" / "processed", root / "Datasets" / "metadata"
     write_csv(res["rows"], proc / "rainfall_csv_source_rows.csv")
     write_csv(res["quality"], meta / "rainfall_csv_quality.csv")
+    write_csv(res["duplicate_report"], meta / "rainfall_csv_duplicate_report.csv")
+    write_csv(res["conflicts"], meta / "rainfall_csv_conflicts.csv")
     write_csv(res["stations"], meta / "rainfall_csv_station_coverage.csv")
     write_csv(res["yearly"], meta / "rainfall_csv_yearly.csv")
     write_csv(res["station_year"], meta / "rainfall_csv_station_year.csv")
     if verbose:
         q = res["quality"]
         print(f"[RAINFALL] {rel_posix(path, root)} (encoding {enc})")
-        show = q[q["section"].isin(["dates", "stations", "duplicates", "reproduction_check"])]
+        show = q[q["section"].isin(["dates", "stations", "duplicates",
+                                    "reproduction_check", "regression_pin",
+                                    "consistency_check"])]
         print(show[["section", "metric", "value"]].to_string(index=False))
-        bad = q[(q["section"] == "reproduction_check") & (q["value"] != "True")]
+        bad = q[q["section"].isin(["reproduction_check", "regression_pin",
+                                   "consistency_check"]) & (q["value"] != "True")]
         if len(bad):
-            print("\n[RAINFALL] !! NOT reproduced (investigate, do not patch silently):")
-            print(bad[["metric", "note"]].to_string(index=False))
+            print("\n[RAINFALL] !! check NOT satisfied (investigate, do not patch silently):")
+            print(bad[["section", "metric", "note"]].to_string(index=False))
+        print("\n[RAINFALL] duplicate report (all raw records retained):")
+        print(res["duplicate_report"][["category", "key_count", "rows_in_keys",
+                                       "extra_rows"]].to_string(index=False))
+        c = res["conflicts"]
+        print(f"\n[RAINFALL] conflicting keys listed in rainfall_csv_conflicts.csv: {len(c)}"
+              " (resolution UNRESOLVED; no value chosen)")
         st = res["stations"]
         hit = st[st["study_area_name_hint_match"].notna()]
         print(f"\n[RAINFALL] stations={len(st)}; name-hint matches={len(hit)} "
