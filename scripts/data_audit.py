@@ -4,6 +4,7 @@
     python scripts/data_audit.py --summary    # discovery + existing reports
     python scripts/data_audit.py --arg
     python scripts/data_audit.py --reservoir
+    python scripts/data_audit.py --rainfall [--rainfall-file PATH]
     python scripts/data_audit.py --canonical
     python scripts/data_audit.py --stations
     python scripts/data_audit.py --provenance
@@ -19,6 +20,7 @@ import pandas as pd
 
 from build_canonical_dataset import run_canonical
 from pipeline_common import load_json_file, project_root, rel_posix, write_csv
+from rainfall_csv_processor import run_rainfall
 from rtff_arg_processor import run_arg
 from rtff_reservoir_processor import run_reservoir
 
@@ -60,30 +62,6 @@ def discover(root: Path):
                   kml_files=len(groups["kml_flood_all"]),
                   policy_pdfs=len(groups["policy_pdf_knowledge_base"]))
     return table, counts, groups, arg_dirs, res_dirs
-
-
-def inspect_rainfall_csvs(root: Path, files):
-    """Schema inspection only. No canonicalization (schema unverified)."""
-    rows = []
-    for f in files:
-        df, enc = None, None
-        for enc in ("utf-8-sig", "latin-1"):
-            try:
-                df = pd.read_csv(f, encoding=enc, low_memory=False)
-                break
-            except Exception as exc:  # noqa: BLE001
-                err = str(exc)[:150]
-        if df is None:
-            rows.append(dict(source_file=rel_posix(f, root), read_error=err))
-            continue
-        rows.append(dict(
-            source_file=rel_posix(f, root), encoding_used=enc, rows=len(df),
-            column_count=df.shape[1], columns=json.dumps(list(map(str, df.columns))),
-            null_counts=json.dumps({str(c): int(df[c].isna().sum()) for c in df.columns}),
-            read_error=None))
-    out = pd.DataFrame(rows)
-    write_csv(out, root / "Datasets" / "metadata" / "rainfall_csv_schema.csv")
-    return out
 
 
 # ------------------------------------------------------------- stations ----
@@ -211,9 +189,27 @@ def build_provenance(root: Path, groups, verbose=True):
                     processing_status=status if s else "not_yet_processed",
                     notes="coverage = first/last parsed source date; acquisition "
                           "date not derived (see rtff/acquisition_log.csv)"))
+
+    # rainfall CSV: coverage from the rainfall audit if it has been run
+    rq = meta / "rainfall_csv_quality.csv"
+    r_start = r_end = None
+    r_status = "not_yet_audited"
+    if rq.exists():
+        q = pd.read_csv(rq, dtype=str, keep_default_na=False)
+        m = dict(zip(q["metric"], q["value"]))
+        r_start, r_end = m.get("first_date") or None, m.get("last_date") or None
+        r_status = "audited_not_canonicalized"
+    for f in groups.get("rainfall_csv", []):
+        rows.append(dict(
+            source_name=f.stem, source_type="rainfall_csv",
+            original_location=None, local_path=rel_posix(f, root),
+            acquisition_date=None, coverage_start=r_start, coverage_end=r_end,
+            processing_status=r_status,
+            notes="independent of RTFF; not merged; rainfall unit UNVERIFIED; "
+                  "duplicates flagged not removed; coverage = first/last parsed "
+                  "date (file name suggests 1991 start - not assumed)"))
+
     simple = [
-        ("rainfall_csv", "rainfall_csv", "schema_inspected_only",
-         "independent of RTFF; schema inspected, not canonicalized"),
         ("kml_flood_all", "flood_kml", "not_processed_future_task", "KML not converted yet"),
         ("gis_stormwater_pdf", "gis_pdf", "not_processed_future_task", "PDF not processed yet"),
         ("policy_pdf_knowledge_base", "policy_pdf", "not_processed_future_task",
@@ -240,16 +236,33 @@ def print_summary(root: Path):
     print("\n" + json.dumps(counts, indent=2))
     meta = root / "Datasets" / "metadata"
     for name in ("arg_data_quality.csv", "reservoir_data_quality.csv",
-                 "canonical_build_report.csv"):
+                 "rainfall_csv_quality.csv", "canonical_build_report.csv"):
         p = meta / name
         print(f"\n=== {name} ===")
-        print(pd.read_csv(p).to_string(index=False) if p.exists() else "(not generated yet)")
+        if not p.exists():
+            print("(not generated yet)")
+        elif name == "rainfall_csv_quality.csv":
+            print(pd.read_csv(p, dtype=str, keep_default_na=False)
+                  [["section", "metric", "value"]].to_string(index=False))
+        else:
+            print(pd.read_csv(p).to_string(index=False))
+
+
+def _safe_rainfall(root, csv_path=None):
+    try:
+        return run_rainfall(root, csv_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[RAINFALL] skipped: {exc}")
+        return None
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Crisis Intelligence Engine data audit")
-    for flag in ("arg", "reservoir", "canonical", "stations", "provenance", "summary"):
+    for flag in ("arg", "reservoir", "rainfall", "canonical", "stations",
+                 "provenance", "summary"):
         ap.add_argument(f"--{flag}", action="store_true")
+    ap.add_argument("--rainfall-file", default=None,
+                    help="rainfall CSV path (relative to project root or absolute)")
     ap.add_argument("--root", default=None, help="override project root (testing)")
     a = ap.parse_args(argv)
     root = Path(a.root) if a.root else project_root()
@@ -259,17 +272,19 @@ def main(argv=None):
     if a.summary:
         print_summary(root)
         return 0
-    run_all = not any([a.arg, a.reservoir, a.canonical, a.stations, a.provenance])
+    run_all = not any([a.arg, a.reservoir, a.rainfall, a.canonical, a.stations,
+                       a.provenance])
     table, counts, groups, arg_dirs, res_dirs = discover(root)
     if run_all:
         print("=== RAW DATA DISCOVERY ===")
         print(table.to_string(index=False))
         print(json.dumps(counts, indent=2))
-        inspect_rainfall_csvs(root, groups["rainfall_csv"])
     if run_all or a.arg:
         run_arg(root)
     if run_all or a.reservoir:
         run_reservoir(root)
+    if run_all or a.rainfall:
+        _safe_rainfall(root, a.rainfall_file)
     if run_all or a.canonical:
         run_canonical(root)
     if run_all or a.stations:
