@@ -1,0 +1,23 @@
+[
+  "rainfall_today",
+  "rainfall_lag_1",
+  "rainfall_lag_2",
+  "rainfall_lag_3",
+  "rainfall_lag_7",
+  "rolling_rainfall_3d",
+  "rolling_rainfall_7d",
+  "rolling_rainfall_14d",
+  "rainy_days_last_7d",
+  "rainy_days_last_14d",
+  "rainfall_change_1d",
+  "rainfall_change_3d",
+  "local_rainfall_max",
+  "local_rainfall_min",
+  "station_count_available",
+  "rainfall_missing_today",
+  "observed_fraction_7d",
+  "month_sin",
+  "month_cos",
+  "is_ne_monsoon",
+  "is_sw_monsoon"
+]

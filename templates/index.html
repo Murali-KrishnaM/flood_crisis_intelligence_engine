@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crisis Intelligence Engine · Velachery</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CIE</div>
+      <div><h1>Crisis Intelligence Engine</h1><p>Ward 177 · Velachery, Chennai</p></div>
+    </div>
+    <div class="topmeta">
+      <span class="tag">OFFLINE RESEARCH PROTOTYPE</span>
+      <span class="asof" id="asof">Data as of —</span>
+    </div>
+  </header>
+
+  <div class="banner">Internal research proxy for next-day high local rainfall stress. Not flood occurrence, not a flood probability, not an official warning.</div>
+
+  <nav class="pipeline" id="pipeline"></nav>
+
+  <main class="dashboard">
+    <section class="left-col">
+      <article class="panel risk-panel">
+        <div class="panel-head"><span>Research risk index</span><span class="chip" id="risk-source">—</span></div>
+        <div class="risk-main">
+          <div class="score" id="risk-score">—</div>
+          <div><div class="severity" id="risk-severity">—</div><div class="muted" id="risk-date">—</div></div>
+        </div>
+        <div class="risk-meter"><div id="risk-fill"></div><div class="meter-labels"><span>0</span><span>0.10</span><span>0.15</span><span>0.18</span><span>1.00</span></div></div>
+        <div class="muted" id="risk-note">Model output for the high-rainfall-stress research proxy.</div>
+      </article>
+
+      <article class="panel trigger-panel">
+        <div class="panel-head"><span>Persistence trigger</span><span class="chip">INTERNAL</span></div>
+        <div class="trigger-state" id="trigger-state">CLEAR</div>
+        <div class="streak" id="streak">0 / 3 days</div>
+        <div class="muted" id="trigger-reason">—</div>
+        <div class="micro" id="trigger-config">—</div>
+        <button class="demo-btn" id="demo-event">Jump to first recorded trigger</button>
+      </article>
+
+      <article class="panel map-panel">
+        <div class="panel-head"><span>Study area · rainfall stations</span><span class="chip">SCHEMATIC</span></div>
+        <div class="station-map" id="station-map"></div>
+        <div class="micro">Station placement is illustrative unless coordinates are available in project metadata.</div>
+      </article>
+    </section>
+
+    <section class="center-col">
+      <article class="panel chart-panel">
+        <div class="panel-head"><span>Risk history</span><div class="seg" id="risk-range"><button data-range="30">30D</button><button data-range="90" class="active">90D</button><button data-range="365">1Y</button><button data-range="2000">FULL</button></div></div>
+        <div class="svg-chart" id="risk-chart"></div>
+      </article>
+      <article class="panel chart-panel">
+        <div class="panel-head"><span>Station aggregate rainfall · source value</span><div class="seg" id="rain-range"><button data-range="7">7D</button><button data-range="30" class="active">30D</button><button data-range="90">90D</button></div></div>
+        <div class="svg-chart" id="rain-chart"></div>
+      </article>
+      <article class="panel replay-panel">
+        <div class="panel-head"><span>Historical replay</span><span class="chip" id="replay-date">—</span></div>
+        <div class="replay-controls"><button id="prev">◀</button><button id="play" class="primary">▶ Play</button><button id="next">Next ▶</button><input id="slider" type="range" min="0" max="0" value="0"><button id="latest">Latest</button></div>
+      </article>
+    </section>
+
+    <section class="right-col">
+      <article class="panel">
+        <div class="panel-head"><span>Station observations</span><span class="chip" id="station-date">—</span></div>
+        <div id="stations"></div>
+        <div class="micro">Source rainfall value. Physical unit not independently verified.</div>
+      </article>
+      <article class="panel reservoir-panel">
+        <div class="panel-head"><span>Reservoir state</span><span class="chip" id="reservoir-date">—</span></div>
+        <div id="reservoirs"></div>
+        <div class="micro">Values shown as recorded by the source. Units are not asserted here.</div>
+      </article>
+    </section>
+  </main>
+
+  <section class="lower-grid">
+    <article class="panel policy-panel"><div class="panel-head"><span>Policy intelligence</span><span class="chip" id="policy-chip">—</span></div><div id="policy-body"></div></article>
+    <article class="panel"><div class="panel-head"><span>System health</span><span class="chip" id="system-chip">—</span></div><div id="system-body"></div></article>
+    <article class="panel"><div class="panel-head"><span>Model evidence</span><span class="chip">RECORDED</span></div><div id="evidence-body"></div></article>
+  </section>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
